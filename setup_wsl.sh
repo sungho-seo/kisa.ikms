@@ -41,8 +41,16 @@ fi
 echo "---------------------------------------------"
 echo " 3. Playwright 브라우저 및 OS 레벨 의존성 설치..."
 echo "---------------------------------------------"
+# Ubuntu 26.04 (resolute) 등 최신 OS용 Playwright 다운로드 오버라이드
+CODENAME=$(cat /etc/os-release | grep VERSION_CODENAME | cut -d= -f2 || echo "")
+if [ "$CODENAME" = "resolute" ] || [ "$CODENAME" = "oracular" ]; then
+    echo "[안내] 최신 Ubuntu 버전을 감지했습니다. Playwright 플랫폼 호환성 모드를 활성화합니다."
+    export PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64
+fi
+
 ./venv/bin/playwright install chromium
-sudo ./venv/bin/playwright install-deps chromium
+sudo -E ./venv/bin/playwright install-deps chromium
+
 
 
 echo "============================================="
