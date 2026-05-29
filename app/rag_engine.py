@@ -441,7 +441,7 @@ def seed_admin_user():
 
     if not user:
 
-        hashed_pw = pwd_context.hash("dpdldkdl!1")
+        hashed_pw = pwd_context.hash("xptmxm!8")
 
         cursor.execute("INSERT INTO users (username, password_hash, role, organization_id, is_active) VALUES (?, ?, ?, ?, ?)",
 
