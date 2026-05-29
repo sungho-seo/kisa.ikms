@@ -46,10 +46,13 @@ CODENAME=$(cat /etc/os-release | grep VERSION_CODENAME | cut -d= -f2 || echo "")
 if [ "$CODENAME" = "resolute" ] || [ "$CODENAME" = "oracular" ]; then
     echo "[안내] 최신 Ubuntu 버전을 감지했습니다. Playwright 플랫폼 호환성 모드를 활성화합니다."
     export PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64
+    ./venv/bin/playwright install chromium
+    sudo PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 ./venv/bin/playwright install-deps chromium
+else
+    ./venv/bin/playwright install chromium
+    sudo ./venv/bin/playwright install-deps chromium
 fi
 
-./venv/bin/playwright install chromium
-sudo -E ./venv/bin/playwright install-deps chromium
 
 
 
