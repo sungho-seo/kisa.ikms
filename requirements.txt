@@ -13,3 +13,5 @@ mcp==1.27.1
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 openai==2.38.0
+playwright>=1.47.0
+
