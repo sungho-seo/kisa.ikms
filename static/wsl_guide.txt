@@ -1,0 +1,51 @@
+=========================================
+WSL Ubuntu 개발 환경 설정 가이드
+=========================================
+
+이 가이드는 동일 네트워크 내의 다른 PC에서 WSL Ubuntu 환경을 구축하고 
+RAG / 크롤러 애플리케이션을 구동하기 위한 가이드입니다.
+
+-----------------------------------------
+[방법 1] 자동 설치 스크립트 실행 (가장 추천)
+-----------------------------------------
+터미널에서 아래의 curl 명령어를 그대로 복사해서 붙여넣기만 하면, 
+시스템 패키지 설치부터 가상환경 및 브라우저 의존성 설정까지 한 번에 완료됩니다.
+
+1. WSL Ubuntu 터미널을 켭니다.
+2. 아래 명령어를 차례대로 입력합니다:
+
+   # 1) 자동 설치 스크립트 다운로드
+   curl -O http://192.168.0.70:8008/static/setup_wsl.sh
+
+   # 2) 실행 권한 부여
+   chmod +x setup_wsl.sh
+
+   # 3) 스크립트 실행 (패키지 설치 중 sudo 패스워드를 요구할 수 있습니다)
+   ./setup_wsl.sh
+
+-----------------------------------------
+[방법 2] 수동 명령어 실행
+-----------------------------------------
+스크립트를 쓰지 않고 직접 한 단계씩 실행하고 싶다면 아래 순서로 진행하세요.
+
+1. WSL Ubuntu 시스템 패키지 설치:
+   sudo apt update
+   sudo apt install -y python3.12 python3.12-venv python3.12-dev python3-pip build-essential libxml2-dev libxslt1-dev zlib1g-dev libffi-dev libssl-dev sqlite3 libsqlite3-dev nodejs npm openjdk-17-jre
+
+2. 가상환경 및 Python 패키지 설치:
+   python3.12 -m venv venv
+   source venv/bin/activate
+   pip install --upgrade pip
+   pip install fastapi uvicorn pydantic python-dotenv PyYAML sse-starlette pymupdf PyPDF2 python-docx python-pptx pyhwp tiktoken xlsxwriter google-genai openai mcp opendataloader-pdf playwright
+
+3. Playwright 브라우저 및 라이브러리 의존성 설치:
+   playwright install chromium
+   sudo playwright install-deps chromium
+
+-----------------------------------------
+[서버 실행 방법]
+-----------------------------------------
+환경 설정이 끝난 후 아래 명령어로 서버를 구동할 수 있습니다.
+가상환경이 켜진 상태(source venv/bin/activate 실행 후)에서 구동하세요:
+
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8008

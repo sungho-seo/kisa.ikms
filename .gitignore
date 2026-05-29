@@ -1,0 +1,43 @@
+# Virtual Environment
+venv/
+agent_venvs/
+
+# Python caching
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Databases and Local files
+*.db
+*.sqlite
+*.log
+nohup.out
+.env
+status.json
+
+# Cache and downloaded folders
+temp_downloads/
+docs/
+logs/
+trees/
+
+# Static agent inputs/outputs
+static/agent_inputs/*
+static/agent_outputs/*
+!static/agent_inputs/.gitkeep
+!static/agent_outputs/.gitkeep
+
+# Node.js
+node_modules/
+
+# IDE files
+.idea/
+.vscode/
+.DS_Store
+
+# Large archives and backups
+*.tgz
+*.tar.gz
+*.zip
+

@@ -1,0 +1,1980 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="page-title">추론형 RAG</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css?v=202604142225.1">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); }
+    </style>
+    
+    <!-- PWA Setup -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0f111a">
+    <link rel="icon" type="image/png" href="/static/icon-192x192.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="iKMS">
+    <link rel="apple-touch-icon" href="/static/icon-192x192.png">
+    
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').then((reg) => {
+                    // Registration successful
+                }).catch((err) => {
+                    console.error('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+
+        // PWA Install Prompt Logic
+        document.addEventListener('DOMContentLoaded', () => {
+            const installBtn = document.getElementById('nav-install-app');
+            
+            // iOS Safari Detection
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+            
+            if (isIOS && !isStandalone) {
+                if (installBtn) {
+                    installBtn.classList.remove('hidden');
+                    installBtn.onclick = () => {
+                        alert('iOS 기기에서는 브라우저 하단의 [공유] 버튼(↑ 모양)을 누른 후, [홈 화면에 추가]를 선택하시면 전용 앱으로 설치하실 수 있습니다.');
+                    };
+                }
+            }
+
+            let deferredPrompt;
+            window.addEventListener('beforeinstallprompt', (e) => {
+                // 안드로이드 크롬 등에서 자동으로 팝업이 뜨는 것을 막고 버튼을 띄움
+                e.preventDefault();
+                deferredPrompt = e;
+                if(installBtn) {
+                    installBtn.classList.remove('hidden');
+                    installBtn.onclick = () => {
+                        installBtn.classList.add('hidden');
+                        deferredPrompt.prompt();
+                        deferredPrompt.userChoice.then((choiceResult) => {
+                            deferredPrompt = null;
+                        });
+                    };
+                }
+            });
+            
+            window.addEventListener('appinstalled', () => {
+                if(installBtn) installBtn.classList.add('hidden');
+                deferredPrompt = null;
+            });
+        });
+    </script>
+</head>
+
+<body>
+    <!-- Login Screen -->
+    <div id="login-app" class="login-container">
+        <div class="login-box">
+            <div id="login-branding" style="text-align:center; margin-bottom: 20px;">
+                <img id="login-logo" src="" alt="logo"
+                    style="max-height:64px; max-width:180px; display:none; margin: 0 auto 10px; object-fit:contain;">
+                <h2 id="login-title">추론형 RAG 접속</h2>
+                <p id="login-tagline" style="font-size:0.85rem; color:var(--text-secondary); margin:4px 0 0;"></p>
+            </div>
+            <form id="login-form">
+                <div class="input-group">
+                    <label>아이디</label>
+                    <input type="text" id="login-username" required autocomplete="username">
+                </div>
+                <div class="input-group">
+                    <label>비밀번호</label>
+                    <input type="password" id="login-password" required autocomplete="current-password">
+                </div>
+                <div style="display: flex; align-items: center; justify-content: flex-start; margin-bottom: 20px; font-size: 0.9rem; color: var(--text-secondary);">
+                    <input type="checkbox" id="login-save" style="margin: 0; margin-right: 8px; width: auto; cursor: pointer;">
+                    <label for="login-save" style="margin: 0; font-weight: normal; cursor: pointer; display: inline;">아이디/비밀번호 기억하기</label>
+                </div>
+                <button type="submit" class="btn-primary" style="margin-top: 10px;">로그인</button>
+            </form>
+            <div id="login-error"
+                style="color: var(--danger); font-size: 0.85rem; margin-top: 10px; text-align: center; display: none;">
+            </div>
+            
+            <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid var(--border-color); display: flex; justify-content: center; gap: 20px; font-size: 0.85rem;">
+                <a href="/support/intro.pdf" target="_blank" style="color: var(--text-secondary); text-decoration: none; display: flex; align-items: center; gap: 5px; transition: color 0.2s;" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text-secondary)'">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    서비스 소개서
+                </a>
+                <a href="/support/manual.pdf" target="_blank" style="color: var(--text-secondary); text-decoration: none; display: flex; align-items: center; gap: 5px; transition: color 0.2s;" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text-secondary)'">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    사용자 매뉴얼
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App Screen (Hidden initially) -->
+    <div id="main-app" class="app-container hidden">
+        <!-- Floating New Chat Button -->
+        <div id="floating-new-chat-btn" class="fab-new-chat" title="새 채팅">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"></path>
+            </svg>
+        </div>
+
+        <!-- Mobile sidebar overlay -->
+        <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" id="main-sidebar">
+
+            <!-- App title + collapse -->
+            <div class="sidebar-header">
+                <div id="sidebar-branding" style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
+                    <img id="sidebar-logo" src="" alt="logo"
+                        style="max-height:30px;max-width:30px;display:none;object-fit:contain;flex-shrink:0;border-radius:4px;">
+                    <h2 id="sidebar-title">추론형 RAG</h2>
+                </div>
+                <button id="btn-sidebar-collapse" class="sidebar-icon-btn" title="사이드바 접기">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="3" y1="12" x2="21" y2="12" />
+                        <line x1="3" y1="6" x2="21" y2="6" />
+                        <line x1="3" y1="18" x2="21" y2="18" />
+                    </svg>
+                </button>
+            </div>
+
+            <!-- New Chat Button -->
+            <button id="btn-new-chat" class="sidebar-new-chat-btn"
+                onclick="window.handleNewChatClick && window.handleNewChatClick(event)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span class="nav-label">새 채팅</span>
+            </button>
+
+            <!-- Navigation Menu -->
+            <nav class="sidebar-nav">
+                <button id="nav-manage" class="nav-btn active">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                    <span class="nav-label">문서 관리</span>
+                </button>
+                <button id="nav-chat" class="nav-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    <span class="nav-label">대화하기</span>
+                </button>
+                <button id="nav-agents" class="nav-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M12 16v-4"></path>
+                        <path d="M12 8h.01"></path>
+                    </svg>
+                    <span class="nav-label">에이전트 관리</span>
+                </button>
+                <button id="nav-admin" class="nav-btn hidden">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    </svg>
+                    <span class="nav-label">조직 및 사용자 관리</span>
+                </button>
+                <button id="nav-admin-stats" class="nav-btn hidden">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="20" x2="18" y2="10"></line>
+                        <line x1="12" y1="20" x2="12" y2="4"></line>
+                        <line x1="6" y1="20" x2="6" y2="14"></line>
+                    </svg>
+                    <span class="nav-label">사용량 통계</span>
+                </button>
+                <button id="nav-settings" class="nav-btn hidden">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    <span class="nav-label">환경 설정</span>
+                </button>
+                <div style="flex-grow: 1;"></div>
+                <button id="nav-install-app" class="nav-btn hidden" style="color: var(--success); border-top: 1px solid var(--border-color);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <span class="nav-label">앱 설치 (홈 화면 추가)</span>
+                </button>
+            </nav>
+
+            <!-- Chat History Panel (shown between nav and user profile, only when chat tab active) -->
+            <div id="chat-history-panel" class="chat-history-panel hidden">
+                <div class="history-panel-header">
+                    <span class="history-panel-title">대화 목록</span>
+                </div>
+                <!-- Search -->
+                <div class="sidebar-search-row">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    <input id="session-search-input" type="text" placeholder="대화 검색..." class="session-search-input">
+                </div>
+                <!-- Session list -->
+                <div id="chat-session-list" class="chat-session-list"></div>
+                <!-- Show all -->
+                <button id="btn-show-all-sessions" class="btn-show-all-sessions hidden">모든 채팅 보기</button>
+                <!-- Delete all -->
+                <div style="padding: 10px 16px;">
+                    <button id="btn-delete-all-sessions" class="btn-action" style="width: 100%; padding: 8px; background: transparent; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; display: flex; justify-content: center; align-items: center; gap: 6px; font-weight: 600; font-size: 0.85rem;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6l-1 14H6L5 6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        전체 대화 삭제
+                    </button>
+                </div>
+            </div>
+
+            <!-- Bottom: user profile -->
+            <div class="sidebar-user-profile">
+                <img id="user-avatar-img" src="" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; display: none;">
+                <div class="user-avatar" id="user-avatar-initials">?</div>
+                <div class="user-profile-info">
+                    <div class="user-profile-name" id="current-username">-</div>
+                    <div class="user-profile-role" id="current-user-role"></div>
+                </div>
+                <button id="btn-settings-open" class="sidebar-icon-btn" title="환경설정" style="margin-left: auto; margin-right: 4px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                </button>
+                <button id="btn-logout" class="sidebar-icon-btn logout-btn" title="로그아웃" style="margin-left: 0;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                        <polyline points="16 17 21 12 16 7" />
+                        <line x1="21" y1="12" x2="9" y2="12" />
+                    </svg>
+                </button>
+            </div>
+
+        </aside>
+
+        <!-- Mobile top bar (shown when sidebar is hidden) -->
+        <button id="btn-sidebar-open" class="btn-sidebar-open" title="메뉴 열기">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+        </button>
+
+        <!-- Admin Area (Hidden by default) -->
+        <main id="admin-area" class="main-content hidden">
+            <!-- Modern Admin Header Bar -->
+            <div class="admin-header-bar">
+                <div class="admin-title-row">
+                    <h1>조직 및 사용자 관리</h1>
+                    <span class="admin-role-badge">관리자 전용</span>
+                </div>
+                <!-- Modern pill-style tabs -->
+                <nav class="admin-tab-nav">
+                    <button id="tab-admin-orgs" class="tab-btn active">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M3 3h6v6H3zM15 3h6v6h-6zM9 15h6v6H9zM3 15h6v6H3z" />
+                        </svg>
+                        조직 관리
+                    </button>
+                    <button id="tab-admin-users" class="tab-btn">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                        </svg>
+                        사용자 관리
+                    </button>
+                    <button id="tab-admin-docs" class="tab-btn">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        전체 문서 관리
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Organization Panel -->
+            <div id="admin-panel-orgs" class="admin-panel">
+                <div class="admin-panel-grid">
+                    <div class="admin-card" style="flex: 1; min-width: 280px; max-width: 340px;">
+                        <div class="admin-card-title">조직 생성</div>
+                        <form id="form-create-org">
+                            <div class="input-group">
+                                <label>조직명</label>
+                                <input type="text" id="admin-org-name" class="input-text" required>
+                            </div>
+                            <div class="input-group">
+                                <label>상위 조직 (선택 사항)</label>
+                                <select id="admin-org-parent" class="input-text">
+                                    <option value="">-- 최상위 조직 --</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn-primary" style="margin-top: 14px;">하위 조직 생성</button>
+                        </form>
+                    </div>
+
+                    <div class="admin-card" style="flex: 2; min-width: 300px;">
+                        <div class="admin-card-title">조직 트리</div>
+                        <div id="org-tree-container"
+                            style="background: var(--bg-primary); padding: 16px; border-radius: 8px; min-height: 200px; color: var(--text-primary); border: 1px solid var(--border-color);">
+                            <!-- Tree will be rendered here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Panel -->
+            <div id="admin-panel-users" class="admin-panel hidden">
+                <div class="admin-panel-grid">
+                    <div class="admin-card" style="flex: 1; min-width: 280px; max-width: 340px;">
+                        <div class="admin-card-title">새 구성원 등록</div>
+                        <form id="form-create-user">
+                            <div class="input-group">
+                                <label>아이디</label>
+                                <input type="text" id="admin-user-id" class="input-text" required autocomplete="username">
+                            </div>
+                            <div class="input-group">
+                                <label>이름</label>
+                                <input type="text" id="admin-user-fullname" class="input-text" placeholder="예: 홍길동" autocomplete="name">
+                            </div>
+                            <div class="input-group">
+                                <label>비밀번호</label>
+                                <input type="password" id="admin-user-pw" class="input-text" required
+                                    autocomplete="new-password">
+                            </div>
+                            <div class="input-group">
+                                <label>소속 조직</label>
+                                <select id="admin-user-org" class="input-text" required></select>
+                            </div>
+                            <div class="input-group" style="display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: flex-start; gap: 8px; margin-top: 10px;">
+                                <input type="checkbox" id="admin-user-is-admin" style="width: 16px; height: 16px; cursor: pointer; margin: 0; accent-color: var(--accent-primary);">
+                                <label for="admin-user-is-admin" style="margin: 0; cursor: pointer; font-size: 0.85rem; color: var(--text-primary); white-space: nowrap; display: inline-block;">관리자 권한 부여</label>
+                            </div>
+                            <button type="submit" class="btn-primary" style="margin-top: 14px;">구성원 생성</button>
+                        </form>
+                    </div>
+
+                    <div class="admin-card" style="flex: 2; min-width: 300px; overflow-x: auto;">
+                        <div class="admin-card-title">구성원 목록</div>
+                        <div class="table-responsive-wrapper" style="width: 100%; overflow-x: auto;">
+                            <table style="width: 100%; min-width: 500px; border-collapse: collapse; text-align: left; font-size: 0.9rem; white-space: nowrap;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid var(--border-color);">
+                                        <th
+                                            style="padding: 10px 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                                            ID</th>
+                                        <th
+                                            style="padding: 10px 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                                            이름</th>
+                                        <th
+                                            style="padding: 10px 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                                            조직</th>
+                                        <th
+                                            style="padding: 10px 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                                            상태</th>
+                                        <th
+                                            style="padding: 10px 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                                            관리</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-users-list">
+                                    <!-- Users will be rendered here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Docs Panel -->
+            <div id="admin-panel-docs" class="admin-panel hidden">
+                <div class="admin-card" style="margin: 0;">
+                    <div class="admin-card-title">전체 문서 관리</div>
+                    <p style="margin-bottom: 16px; color: var(--text-secondary); font-size: 0.875rem;">조직 및 사용자별 문서 조회 및
+                        관리</p>
+
+                    <div class="manage-body"
+                        style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; height: 600px;">
+                        <!-- LEFT: Admin Folder Tree (Organization > Uploader) -->
+                        <div class="folder-tree-panel" style="border-right: 1px solid var(--border-color);">
+                            <div class="folder-tree-toolbar">
+                                <span class="folder-tree-title">소속 / 업로더</span>
+                            </div>
+                            <div class="folder-tree-list" id="admin-doc-tree-list" style="padding: 10px;">
+                                <!-- Rendered dynamically by loadAdminDocs() -->
+                            </div>
+                        </div>
+
+                        <!-- RIGHT: Admin Document Table -->
+                        <div class="manage-right-panel" style="overflow-y: auto;">
+                            <div class="manage-filter-bar">
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <path
+                                            d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                                    </svg>
+                                    <span id="admin-current-folder-name" class="current-folder-label">게시된 전체 문서</span>
+                                </div>
+                            </div>
+
+                            <div class="table-responsive-wrapper" style="width: 100%; overflow-x: auto;">
+                                <table style="width: 100%; min-width: 800px; border-collapse: collapse; text-align: left; white-space: nowrap;">
+                                    <thead>
+                                        <tr
+                                            style="border-bottom: 2px solid var(--border-color); background: rgba(0,0,0,0.02);">
+                                            <th
+                                                style="padding: 10px 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase;">
+                                                번호</th>
+                                            <th
+                                                style="padding: 10px 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase;">
+                                                업로더 ID</th>
+                                            <th
+                                                style="padding: 10px 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase;">
+                                                소속팀</th>
+                                            <th
+                                                style="padding: 10px 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; width: 25%; max-width: 250px;">
+                                                문서명</th>
+                                            <th
+                                                style="padding: 10px 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase;">
+                                                상태</th>
+                                            <th
+                                                style="padding: 10px 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase;">
+                                                업로드 날짜</th>
+                                            <th
+                                                style="padding: 10px 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase;">
+                                                페이지 수</th>
+                                            <th
+                                                style="padding: 10px 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase;">
+                                                관리</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="admin-docs-list">
+                                        <!-- Admin global docs will be rendered here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Branding Panel -->
+        </main>
+
+        <!-- Settings Area -->
+        <main id="settings-area" class="main-content hidden">
+            <div class="admin-header-bar">
+                <div class="admin-title-row">
+                    <h1>환경 설정</h1>
+                    <span class="admin-role-badge">관리자 전용</span>
+                </div>
+                <nav class="admin-tab-nav">
+                    <button id="tab-settings-branding" class="tab-btn active">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                            <line x1="9" y1="9" x2="9.01" y2="9" />
+                            <line x1="15" y1="9" x2="15.01" y2="9" />
+                        </svg>
+                        브랜딩 설정
+                    </button>
+                    <button id="tab-settings-llm" class="tab-btn">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                        LLM 설정
+                    </button>
+                </nav>
+            </div>
+            <div id="settings-panel-branding" class="admin-panel">
+                <div class="admin-panel-grid" style="flex-wrap:wrap; gap:20px;">
+                    <!-- Logo Upload Card -->
+                    <div class="admin-card" style="flex:1; min-width:280px; max-width:360px;">
+                        <div class="admin-card-title">회사 로고</div>
+                        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:14px;">PNG, JPG, SVG, WebP
+                            &middot; 최대 2MB</p>
+                        <div id="branding-logo-preview-wrap" style="margin-bottom:16px;display:none;text-align:center;">
+                            <img id="branding-logo-preview" src="" alt="현재 로고"
+                                style="max-height:96px;max-width:200px;object-fit:contain;border-radius:8px;border:1px solid var(--border-color);padding:8px;background:var(--bg-primary);">
+                            <div style="margin-top:10px;">
+                                <button id="btn-delete-logo" class="btn-action"
+                                    style="color:var(--danger);border-color:rgba(239,68,68,0.4);font-size:0.8rem;padding:6px 12px;">로고
+                                    삭제</button>
+                            </div>
+                        </div>
+                        <input type="file" id="branding-logo-input"
+                            accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp,image/gif"
+                            style="display:none;">
+                        <div id="branding-logo-drop-zone"
+                            style="border:2px dashed var(--border-color);border-radius:10px;padding:28px 16px;text-align:center;cursor:pointer;transition:border-color 0.2s;color:var(--text-secondary);font-size:0.875rem;">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="1.5" style="display:block;margin:0 auto 10px;opacity:0.5;">
+                                <rect x="3" y="3" width="18" height="18" rx="2" />
+                                <circle cx="8.5" cy="8.5" r="1.5" />
+                                <polyline points="21 15 16 10 5 21" />
+                            </svg>
+                            클릭하거나 이미지를 드래그하세요
+                        </div>
+                        <div id="branding-logo-new-preview" style="display:none;margin-top:14px;text-align:center;">
+                            <img id="branding-logo-new-img" src="" alt=""
+                                style="max-height:80px;max-width:180px;object-fit:contain;border-radius:8px;border:1px solid var(--border-color);padding:6px;background:var(--bg-primary);">
+                            <p id="branding-logo-filename"
+                                style="font-size:0.8rem;color:var(--text-secondary);margin-top:6px;"></p>
+                        </div>
+                        <button id="btn-upload-logo" class="btn-primary"
+                            style="margin-top:16px;width:100%;display:none;">로고 업로드</button>
+                    </div>
+                    <!-- Text Settings Card -->
+                    <div class="admin-card" style="flex:1; min-width:280px;">
+                        <div class="admin-card-title">텍스트 설정</div>
+                        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:14px;">사이드바와 로그인 화면에 표시될
+                            텍스트를 설정합니다.</p>
+                        <div class="input-group" style="margin-bottom: 14px;">
+                            <label>로고 및 텍스트 표시 모드</label>
+                            <select id="branding-logo-type" class="category-select" style="width: 100%; box-sizing: border-box;">
+                                <option value="square">정사각형 로고 (로고 + 텍스트 모두 표시)</option>
+                                <option value="rectangle">직사각형 로고 (로고만 표시, 텍스트 숨김)</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>회사명 / 서비스명</label>
+                            <input type="text" id="branding-company-name" class="input-text" placeholder="예: 추론형 RAG"
+                                maxlength="60">
+                        </div>
+                        <div class="input-group" style="margin-top:14px;">
+                            <label>한 줄 설명 (선택)</label>
+                            <input type="text" id="branding-tagline" class="input-text" placeholder="예: AI 기반 문서 분석 시스템"
+                                maxlength="80">
+                        </div>
+                        <div
+                            style="margin-top:20px;padding:16px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;">
+                            <p
+                                style="font-size:0.75rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">
+                                미리보기</p>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <div id="branding-preview-logo-wrap"
+                                    style="display:none;width:28px;height:28px;flex-shrink:0;">
+                                    <img id="branding-preview-logo" src=""
+                                        style="width:28px;height:28px;object-fit:contain;border-radius:4px;">
+                                </div>
+                                <div>
+                                    <div id="branding-preview-name"
+                                        style="font-weight:600;font-size:0.95rem;color:var(--text-primary);">추론형 RAG
+                                    </div>
+                                    <div id="branding-preview-tagline"
+                                        style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px;"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: flex-end; margin-top:20px;">
+                            <button id="btn-save-branding-text" class="btn-primary" style="width: auto; padding: 12px 30px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" style="vertical-align:middle;margin-right:6px;">
+                                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                                    <polyline points="17 21 17 13 7 13 7 21" />
+                                    <polyline points="7 3 7 8 15 8" />
+                                </svg>
+                                저장하기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Panel -->
+            <div id="settings-panel-llm" class="admin-panel hidden">
+                <div class="admin-panel-grid" style="flex-wrap:wrap; gap:20px;">
+                    <div class="admin-card" style="flex:1; min-width:320px;">
+                        <div class="admin-card-title">LLM 모델 설정</div>
+                        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:20px;">각 기능별 최적의 AI 모델을 설정합니다. 사용자 정의 LLM을 선택항여 OpenAI 규격(vLLM 등) 직접 연동이 가능합니다.</p>
+                        
+                        <div id="llm-settings-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; align-items: start;">
+                            <!-- JS will inject model settings forms here -->
+                        </div>
+
+                        <div style="display: flex; justify-content: flex-end; margin-top:20px;">
+                            <button id="btn-save-llm-settings" class="btn-primary" style="width: auto; padding: 12px 30px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:6px;">
+                                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                                    <polyline points="17 21 17 13 7 13 7 21" />
+                                    <polyline points="7 3 7 8 15 8" />
+                                </svg>
+                                모델 설정 저장
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+        </main>
+
+        <!-- Admin Statistics Area (Hidden by default) -->
+        <main id="admin-stats-area" class="main-content hidden" style="overflow-y: auto;">
+            <div class="admin-header-bar" style="margin-bottom: 24px;">
+                <div class="admin-title-row">
+                    <h1>사용량 통계</h1>
+                    <span class="admin-role-badge">관리자 전용</span>
+                </div>
+                <!-- Controls and filters -->
+                <style>
+                    /* Force stack for all mobile/tablet views (including large logically-scaled phones like Z Fold) */
+                    @media (max-width: 1024px) {
+                        .stats-controls.filter-bar-desktop {
+                            display: block !important; /* Pure block ensures absolute vertical stacking without flex column wrapping side-effects */
+                            width: 100% !important;
+                            box-sizing: border-box !important;
+                        }
+                        .stats-controls.filter-bar-desktop .input-group {
+                            display: block !important;
+                            width: 100% !important;
+                            max-width: 100% !important;
+                            margin-top: 0 !important;
+                            margin-bottom: 16px !important;
+                        }
+                        .stats-controls.filter-bar-desktop .input-text {
+                            width: 100% !important;
+                            box-sizing: border-box !important;
+                        }
+                        .stats-controls.filter-bar-desktop button {
+                            display: flex !important; /* Keep flex ONLY internal to the button for the icon */
+                            width: 100% !important;
+                            max-width: 100% !important;
+                            margin-top: 8px !important;
+                            margin-bottom: 0 !important;
+                            justify-content: center !important;
+                            box-sizing: border-box !important;
+                        }
+                    }
+                </style>
+                <div class="stats-controls filter-bar-desktop">
+                    <div class="input-group">
+                         <label style="font-size: 0.8rem; text-transform: uppercase;">시작일</label>
+                         <input type="date" id="stats-start-date" class="input-text" style="background: var(--bg-secondary);">
+                    </div>
+                    <div class="input-group">
+                         <label style="font-size: 0.8rem; text-transform: uppercase;">종료일</label>
+                         <input type="date" id="stats-end-date" class="input-text" style="background: var(--bg-secondary);">
+                    </div>
+                    <button class="btn-primary" id="btn-refresh-stats" style="height: 42px; padding: 0 24px; font-weight: 500; display: flex; align-items: center; gap: 8px; width: auto; flex: 0 0 auto;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        조회
+                    </button>
+                    <button class="btn-secondary" id="btn-stats-settings" style="display: none !important; height: 42px; padding: 0 20px; font-weight: 500; align-items: center; gap: 8px; margin-left: auto;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20m-5-5h10m-10-10h10" /><circle cx="12" cy="12" r="10" /></svg>
+                        단가 설정
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dashboard Content -->
+            <div class="admin-panel" style="display:flex; flex-direction:column; gap:24px;">
+                <!-- Summary Metrics (Added for better UI UX) -->
+                <div class="stats-summary-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px;">
+                    <div class="admin-card" style="display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding: 24px; position: relative; overflow: hidden;">
+                        <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(99, 102, 241, 0.1); color: #6366f1; display: flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                        </div>
+                        <span style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 8px;">기간 내 총 사용 토큰</span>
+                        <span id="stats-summary-tokens" style="font-size: 2rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px;">0</span>
+                    </div>
+                    <div class="admin-card" style="display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding: 24px; position: relative; overflow: hidden;">
+                        <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(56, 189, 248, 0.1); color: #38bdf8; display: flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                        </div>
+                        <span style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 8px;">기간 내 추정 비용</span>
+                        <span id="stats-summary-cost" style="font-size: 2rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px;">$0.0000</span>
+                    </div>
+                    <div class="admin-card" id="stats-card-active-users" style="display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding: 24px; position: relative; overflow: hidden;">
+                        <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                        </div>
+                        <span style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 8px;">해당 기간 활성 사용자</span>
+                        <span id="stats-summary-users" style="font-size: 2rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px;">0 명</span>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr; gap: 24px;">
+                    <!-- Chart Area -->
+                    <div class="admin-card" style="width: 100%; min-height: 400px; padding: 24px;">
+                        <div class="admin-card-title" style="margin-bottom: 24px; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">일별 토큰 사용 추이</div>
+                        <div style="position: relative; height: 320px; width: 100%;">
+                            <canvas id="tokensChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Rankings Table -->
+                    <div class="admin-card" id="stats-card-user-rankings" style="width: 100%; padding: 24px;">
+                        <div class="admin-card-title" style="margin-bottom: 16px; color: var(--text-primary);">사용자별 이용 현황 <span style="font-size: 0.8rem; font-weight: 400; color: var(--text-secondary); margin-left: 8px;">(누적 토큰 기준 상위)</span></div>
+                        <div class="table-container" style="overflow-x:auto; border-radius: 8px; border: 1px solid var(--border-color);">
+                            <table class="data-table" id="table-user-rankings" style="width: 100%; min-width: 600px; text-align: left; border-collapse: collapse; white-space: nowrap;">
+                                <thead>
+                                    <tr style="background-color: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border-color);">
+                                        <th style="padding: 12px 16px; font-size: 0.8rem; text-transform: uppercase; color: var(--text-secondary);">순위</th>
+                                        <th style="padding: 12px 16px; font-size: 0.8rem; text-transform: uppercase; color: var(--text-secondary);">아이디</th>
+                                        <th style="padding: 12px 16px; font-size: 0.8rem; text-transform: uppercase; color: var(--text-secondary);">이름</th>
+                                        <th style="padding: 12px 16px; font-size: 0.8rem; text-transform: uppercase; color: var(--text-secondary); text-align: right;">총 토큰 (Prompt + Completion)</th>
+                                        <th style="padding: 12px 16px; font-size: 0.8rem; text-transform: uppercase; color: var(--text-secondary); text-align: right;">추정 예상 비용 ($)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Pricing Settings Modal -->
+            <div id="pricing-modal" class="modal-overlay hidden">
+                <div class="modal-content" style="max-width:600px;">
+                    <button class="modal-close" id="btn-close-pricing">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                    <h2 style="margin-bottom:20px;">모델별 추정 단가 설정 ($ / 1M 토큰)</h2>
+
+                    <div class="table-container" style="margin-bottom:20px;">
+                        <table class="data-table" id="table-pricing">
+                            <thead>
+                                <tr>
+                                    <th>모델명</th>
+                                    <th>Prompt 비용</th>
+                                    <th>Completion 비용</th>
+                                    <th>삭제</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+
+                    <form id="form-add-pricing" style="display:flex; gap:10px; align-items:flex-end; border-top:1px solid var(--border-color); padding-top:20px;">
+                        <div class="input-group" style="flex:2; margin-bottom:0;">
+                            <label>모델명</label>
+                            <input type="text" id="stats-model-name" class="input-text" required placeholder="예: gemini">
+                        </div>
+                        <div class="input-group" style="flex:1; margin-bottom:0;">
+                            <label>Prompt 비용</label>
+                            <input type="number" step="0.001" id="stats-cost-prompt" class="input-text" required>
+                        </div>
+                        <div class="input-group" style="flex:1; margin-bottom:0;">
+                            <label>Completion 비용</label>
+                            <input type="number" step="0.001" id="stats-cost-comp" class="input-text" required>
+                        </div>
+                        <button type="submit" class="btn-primary" style="height:38px; white-space:nowrap;">갱신</button>
+                    </form>
+                </div>
+            </div>
+        </main>
+
+
+        <!-- Agents Area -->
+        <main id="agents-area" class="main-content hidden">
+            <div class="manage-header">
+                <div class="header-info">
+                    <h1>에이전트 관리</h1>
+                    <span class="status-badge">AI 전용 작업 에이전트 생성 및 설정</span>
+                </div>
+            </div>
+
+            <div class="manage-body" style="border-top: 1px solid var(--border-color);">
+                <!-- LEFT: Agents List -->
+                <div class="folder-tree-panel" style="width: 320px; border-right: 1px solid var(--border-color);">
+                    <div class="folder-tree-toolbar"
+                        style="display:flex; justify-content:space-between; align-items:center; padding-bottom: 8px;">
+                        <span class="folder-tree-title">목록</span>
+                        <div style="display: flex; gap: 4px; align-items: center;">
+                            <button id="btn-create-agent-new" class="btn-primary"
+                                style="padding: 4px 8px; font-size: 0.8rem; width: 96px; text-align: center; align-items: center; justify-content: center;">+
+                                새 에이전트</button>
+                            <button class="folder-toolbar-btn btn-collapse-tree" title="목록 접기/펼치기" style="padding: 4px; margin-left: 2px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="15 18 9 12 15 6"></polyline>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="folder-tree-list" id="agents-list-container" style="padding: 10px;">
+                        <!-- Agent items rendered here -->
+                    </div>
+                </div>
+
+                <!-- RIGHT: Agent Editor -->
+                <div class="manage-right-panel" style="padding: 20px; overflow-y: auto;">
+                    <div id="agent-editor-container" style="max-width: 800px; margin: 0 auto; display: none;">
+                        <h2 id="agent-editor-title"
+                            style="margin-bottom: 20px; color: var(--text-primary); font-size: 1.5rem;">새 에이전트 생성</h2>
+
+                        <div class="admin-card" style="margin-bottom: 20px; padding: 20px;">
+                            <div class="admin-card-title">AI 자동 생성 (추천)</div>
+                            <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:14px;">원하는 에이전트의 역할과
+                                동작을 자세히 설명해주세요. AI가 자동으로 프롬프트와 필요 코드를 작성해 줍니다.</p>
+                            <div style="display:flex; gap: 10px;">
+                                <textarea id="agent-gen-requirements" class="input-text"
+                                    style="flex:1; height: 80px; resize: vertical;"
+                                    placeholder="예: 업로드된 CSV 파일에서 매출 데이터를 분석해서 요약 정보를 출력해주는 에이전트를 만들어줘."></textarea>
+                                <button id="btn-generate-agent" class="btn-primary"
+                                    style="align-self: flex-start; height: 80px; width: 160px;">AI로 생성하기</button>
+                            </div>
+                        </div>
+
+                        <!-- 데몬 제어판 (백그라운드 에이전트 전용, 기본 숨김) -->
+                        <div id="daemon-control-panel" class="admin-card" style="display: none; margin-bottom: 20px; padding: 16px; border: 1px solid #ef4444; background-color: rgba(239, 68, 68, 0.05);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <div class="admin-card-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                                    <span id="daemon-status-indicator" style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background-color: #9ca3af; box-shadow: 0 0 5px rgba(0,0,0,0.2);"></span>
+                                    데몬 제어판 (상시 구동)
+                                </div>
+                                <div style="display: flex; gap: 8px;">
+                                    <button id="btn-daemon-start" class="btn-primary" style="padding: 6px 12px; font-size: 0.85rem; background-color: #10b981; border-color: #10b981; display:flex; align-items:center; gap:6px; cursor: pointer;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                                        실행
+                                    </button>
+                                    <button id="btn-daemon-stop" class="btn-primary" style="padding: 6px 12px; font-size: 0.85rem; background-color: #ef4444; border-color: #ef4444; display:none; align-items:center; gap:6px; cursor: pointer;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12"></rect></svg>
+                                        정지
+                                    </button>
+                                </div>
+                            </div>
+                            <div style="background: #1e1e1e; border-radius: 6px; padding: 10px; border: 1px solid #333; display: flex; flex-direction: column;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <span style="color: #888; font-size: 0.75rem; text-transform: uppercase; font-family: monospace;">실시간 데몬 로그</span>
+                                    <button id="btn-daemon-refresh-logs" style="background: none; border: none; color: #3b82f6; cursor: pointer; font-size: 0.75rem; padding: 2px 6px;">새로고침</button>
+                                </div>
+                                <textarea id="daemon-logs-textarea" readonly style="width: 100%; min-height: 140px; background: transparent; color: #a5d6ff; border: none; outline: none; resize: vertical; font-family: 'Consolas', monospace; font-size: 0.8rem; line-height: 1.4;"></textarea>
+                            </div>
+                        </div>
+
+                        <form id="form-agent-editor">
+                            <input type="hidden" id="agent-id-field">
+
+                            <!-- 1. 기본 설정 (Basic Settings) -->
+                            <div style="background: var(--bg-primary); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px;">
+                                <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 1.05rem; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">1. 기본 설정</h3>
+                                
+                                <div class="input-group" style="margin-bottom: 16px; display: none;">
+                                    <input type="radio" name="agent-type" value="AUTONOMOUS" checked>
+                                </div>
+
+                                <div class="input-group" style="margin-bottom: 16px;">
+                                    <label>에이전트 이름</label>
+                                    <input type="text" id="agent-name-field" class="input-text" required
+                                        placeholder="에이전트의 짧고 명료한 이름">
+                                </div>
+
+                                <div class="input-group" style="margin-bottom: 16px;">
+                                    <label>설명 (선택)</label>
+                                    <input type="text" id="agent-desc-field" class="input-text" placeholder="에이전트의 역할 설명">
+                                </div>
+                                <div class="input-group" style="margin-bottom: 0;">
+                                    <label>공개(공유) 여부</label>
+                                    <select id="agent-share-field" class="category-select" style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 8px; border-radius: 4px; outline: none; font-size: 0.9rem; cursor: pointer;">
+                                        <option value="PRIVATE" selected>비공개 (나만 사용)</option>
+                                        <option value="ORG">조직 공유 (같은 소속 구성원 사용가능)</option>
+                                        <option value="ALL">전체 공개 (사내 모든 임직원 사용가능)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- 분리된 동적 설정 영역 시작 -->
+                            <!-- 4. 자율형 에이전트 설정 -->
+                            <div id="config-section-autonomous" class="agent-config-section" style="background: var(--bg-primary); padding: 16px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 16px;">
+                                <h4 style="margin-top: 0; margin-bottom: 12px; font-size: 0.95rem; color: var(--accent);">💭 자율형 에이전트 고급 설정</h4>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                                    <div class="input-group" style="margin: 0;">
+                                        <label>플래닝 전략</label>
+                                        <select id="cfg-auto-strategy" class="category-select">
+                                            <option value="react">ReAct (Reasoning + Acting)</option>
+                                            <option value="plan_execute">Plan-and-Execute</option>
+                                            <option value="tot">Tree of Thought</option>
+                                        </select>
+                                    </div>
+                                    <div class="input-group" style="margin: 0;">
+                                        <label>최대 반복 스텝 (Max Iterations)</label>
+                                        <input type="number" id="cfg-auto-limit" class="input-text" value="15" min="1" max="50">
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                                    <label style="font-size: 0.85rem; font-weight: normal; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                        <input type="checkbox" id="cfg-auto-memory" checked> 대화 윈도우 단기 메모리 사용
+                                    </label>
+                                    <label style="font-size: 0.85rem; font-weight: normal; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                        <input type="checkbox" id="cfg-auto-rag"> 장기 메모리 (맞춤형 RAG 연동)
+                                    </label>
+                                    <label style="font-size: 0.85rem; font-weight: normal; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                        <input type="checkbox" id="cfg-auto-hitl"> 인간 승인 개입 (HITL) 허용
+                                    </label>
+                                    <label style="font-size: 0.85rem; font-weight: bold; color: #ef4444; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                        <input type="checkbox" id="cfg-auto-daemon"> ⚙️ 상시 동작 (백그라운드 데몬화)
+                                    </label>
+                                </div>
+                            </div>
+                            <!-- 분리된 동적 설정 영역 끝 -->
+
+                            <!-- 2. 지시사항 및 코드 (Prompt & Code) -->
+                            <div style="background: var(--bg-primary); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px;">
+                                <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 1.05rem; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">2. 지시사항 및 코드 설정</h3>
+
+                                <div class="input-group" style="margin-bottom: 20px;">
+                                    <label>시스템 프롬프트</label>
+                                    <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:6px;">AI의 성격, 말투,
+                                        핵심 지시사항을 정의합니다.</p>
+                                    <textarea id="agent-prompt-field" class="input-text" required
+                                        style="height: 150px; resize: vertical;" placeholder="시스템 프롬프트 입력..."></textarea>
+                                </div>
+
+                                <div class="input-group" style="margin-bottom: 20px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                        <span style="font-weight: 500;">파이썬 코드 (선택)</span>
+                                        <label style="margin: 0; font-size: 0.85rem; font-weight: normal; cursor: pointer; display: flex; align-items: center; gap: 6px; color: var(--accent); white-space: nowrap;">
+                                            <input type="checkbox" id="agent-code-active-field" checked style="accent-color: var(--accent); cursor: pointer;"> 코드 사용 활성화
+                                        </label>
+                                    </div>
+                                    <p style="font-size:0.8rem; color:var(--text-secondary); margin-top: 0; margin-bottom:6px;">에이전트가 실행해야
+                                        할 파이썬 스크립트가 있다면 작성하세요. 업로드된 파일경로는 <code
+                                            style="background:var(--bg-primary);padding:2px 4px;border-radius:4px;">sys.argv[1]</code>
+                                        로 주어집니다.</p>
+                                    <style>
+                                        .code-editor-wrapper {
+                                            display: flex;
+                                            background: #1e1e1e;
+                                            border-radius: 6px;
+                                            border: 1px solid var(--border-color);
+                                            overflow: hidden;
+                                            height: 600px;
+                                            resize: vertical;
+                                            position: relative;
+                                            padding-bottom: 2px;
+                                        }
+                                        .code-editor-wrapper::-webkit-scrollbar {
+                                            width: 14px;
+                                            height: 14px;
+                                        }
+                                        .code-editor-wrapper::-webkit-scrollbar-corner {
+                                            background: transparent;
+                                        }
+                                        .code-editor-wrapper::-webkit-resizer {
+                                            background-color: transparent;
+                                            background-image: linear-gradient(135deg, transparent 0%, transparent 50%, #888 50%, #888 100%);
+                                        }
+                                        .line-numbers-container {
+                                            padding: 12px 8px;
+                                            text-align: right;
+                                            color: #858585;
+                                            background: #1e1e1e;
+                                            border-right: 1px solid #333;
+                                            font-family: monospace;
+                                            font-size: 14px;
+                                            line-height: 1.5;
+                                            overflow: hidden;
+                                            pointer-events: none;
+                                            user-select: none;
+                                        }
+                                        #agent-code-field, #sandbox-code-field {
+                                            flex: 1;
+                                            height: 100% !important;
+                                            border: none !important;
+                                            outline: none;
+                                            resize: none !important;
+                                            margin: 0;
+                                            border-radius: 0;
+                                            font-size: 14px;
+                                            line-height: 1.5;
+                                            white-space: pre; 
+                                            overflow: auto;
+                                            font-family: monospace; 
+                                            background: transparent; 
+                                            color: #d4d4d4; 
+                                        }
+                                        #agent-code-field::-webkit-scrollbar, #sandbox-code-field::-webkit-scrollbar {
+                                            width: 12px;
+                                            height: 12px;
+                                        }
+                                        #agent-code-field::-webkit-scrollbar-track, #sandbox-code-field::-webkit-scrollbar-track {
+                                            background: #1e1e1e; 
+                                            border-left: 1px solid #333;
+                                            border-top: 1px solid #333;
+                                        }
+                                        #agent-code-field::-webkit-scrollbar-thumb, #sandbox-code-field::-webkit-scrollbar-thumb {
+                                            background: #555; 
+                                            border-radius: 6px;
+                                            border: 3px solid #1e1e1e;
+                                        }
+                                        #agent-code-field::-webkit-scrollbar-thumb:hover, #sandbox-code-field::-webkit-scrollbar-thumb:hover {
+                                            background: #777; 
+                                        }
+                                    </style>
+                                    <div class="code-editor-wrapper">
+                                        <div id="agent-code-line-numbers" class="line-numbers-container">1</div>
+                                        <textarea id="agent-code-field" class="input-text"
+                                            style="font-family: monospace; background: transparent; color: #d4d4d4; padding: 12px;"
+                                            placeholder="import sys&#10;if len(sys.argv) > 1:&#10;    file_path = sys.argv[1]&#10;    ..."></textarea>
+                                    </div>
+                                    
+                                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                        <input type="text" id="agent-code-modifier-prompt" class="input-text" placeholder="코드 수정 요청 (예: 저장 방식을 로컬 파일이 아닌 DB로 바꿔줘)">
+                                        <button type="button" id="btn-modify-code" class="btn-action" style="white-space: nowrap; padding: 6px 12px; font-size: 0.85rem;">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>AI 부분 생성
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 0;">
+                                    <div style="display: flex; gap: 20px; align-items: center;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer; color: var(--text-primary);">
+                                            <input type="checkbox" id="agent-req-file-field" style="width: 16px; height: 16px;">
+                                            파일 첨부 필수 (입력 파일 처리)
+                                        </label>
+                                        <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer; color: var(--text-primary);">
+                                            <input type="checkbox" id="agent-req-prompt-field" style="width: 16px; height: 16px;">
+                                            사용자 질문 입력 필수
+                                        </label>
+                                    </div>
+                                    <!-- 공유 범위 숨김 처리 제거됨 -->
+                                </div>
+                            </div>
+
+                            <!-- 3. 결과 생성 템플릿 기능 (Template Binding) -->
+                            <div style="background: var(--bg-primary); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 24px;">
+                                <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 1.05rem; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">3. 결과 생성 템플릿 기능</h3>
+                                
+                                <div class="input-group" style="margin-bottom: 0;">
+                                    <label>결과지 생성 템플릿 자동 주입 (선택)</label>
+                                    <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:6px;">에이전트가 결과를
+                                        채워넣을 MS Office (.docx, .xlsx 등) 기본 템플릿 파일을 업로드하세요. 코드는 <code
+                                            style="background:var(--bg-primary);padding:2px 4px;border-radius:4px;">sys.argv[N]</code>
+                                        (첨부파일 배열의 마지막) 로 주입된 템플릿에 접근하여 Placeholder를 수정할 수 있습니다.</p>
+                                    <div style="display:flex; align-items:center; gap: 10px; background: transparent; padding: 12px; border-radius: 8px; border: 1px dashed var(--border-color);">
+                                        <input type="file" id="agent-template-file" style="display: none;" accept=".docx,.doc,.xlsx,.xls,.pptx,.ppt">
+                                        <button type="button" id="btn-select-agent-template" class="btn-action" style="padding: 6px 12px; font-size: 0.85rem;">템플릿 파일 선택</button>
+                                        <span id="agent-template-name-display" style="font-size: 0.85rem; color: var(--text-secondary);">선택된 파일 없음</span>
+                                        <button type="button" id="btn-clear-agent-template" class="btn-action hidden" style="color: #ef4444; border: none; background: transparent; padding: 4px; border-radius: 50%;">x</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 4. 샌드박스 테스트 환경 (실행 전용) -->
+                            <div style="background: var(--bg-primary); padding: 20px; border-radius: 8px; border: 1px dashed var(--accent); margin-bottom: 24px;">
+                                <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 1.05rem; color: var(--accent); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">4. 샌드박스 시스템 테스트 (선택)</h3>
+                                <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">'코드 미리 실행' 작동 시 샌드박스가 이 인자값과 파일들을 추가로 읽어들입니다. 이 설정은 시스템 저장과 관계없는 1회성 테스트 설정입니다.</p>
+                                
+                                <div class="input-group" style="margin-bottom: 16px;">
+                                    <label>테스트 파라미터 (sys.argv)</label>
+                                    <input type="text" id="agent-test-args" class="input-text" placeholder="예: --mode=strict arg1 arg2">
+                                </div>
+                                <div class="input-group" style="margin-bottom: 16px;">
+                                    <label>테스트 첨부 파일 다중 선택</label>
+                                    <div style="display:flex; align-items:center; gap: 10px; background: transparent; padding: 12px; border-radius: 8px; border: 1px dashed var(--border-color);">
+                                        <input type="file" id="agent-test-files" style="display: none;" multiple>
+                                        <button type="button" id="btn-select-test-files" class="btn-action" style="padding: 6px 12px; font-size: 0.85rem;">테스트 파일 불러오기</button>
+                                        <span id="agent-test-files-display" style="font-size: 0.85rem; color: var(--text-secondary);">선택된 파일 없음</span>
+                                        <button type="button" id="btn-clear-test-files" class="btn-action hidden" style="color: #ef4444; border: none; background: transparent; padding: 4px; border-radius: 50%;">x</button>
+                                    </div>
+                                </div>
+
+                                <div class="input-group" style="margin-bottom: 0;">
+                                    <label>샌드박스 수동 명령어 (Terminal)</label>
+                                    <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:6px;">이 에이전트의 가상 환경(venv) 내에서 수동으로 패키지 설치나 터미널 명령을 실행합니다. (예: <code style="background:var(--bg-primary);padding:2px 4px;border-radius:4px;">pip install bs4</code>)</p>
+                                    <div style="display: flex; gap: 8px;">
+                                        <input type="text" id="agent-manual-command" class="input-text" placeholder="터미널 명령어 입력..." autocomplete="off">
+                                        <button type="button" id="btn-run-manual-command" class="btn-action" style="white-space: nowrap;">터미널 실행</button>
+                                        <button type="button" id="btn-cancel-manual-command" class="btn-action hidden" style="white-space: nowrap; color: #ef4444; border-color: rgba(239, 68, 68, 0.4);">실행 취소</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                                <button type="button" id="btn-delete-agent" class="btn-action"
+                                    style="color: var(--danger); border-color: rgba(239, 68, 68, 0.4); display: none; width: 100px;">삭제</button>
+                                <button type="button" id="btn-reset-sandbox" class="btn-action"
+                                    style="color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); display: none; width: 140px;">샌드박스 초기화</button>
+                                <div style="flex:1;"></div>
+                                <button type="button" id="btn-test-agent" class="btn-action"
+                                    style="width: 140px; color: var(--accent); border-color: var(--accent);">코드 미리
+                                    실행</button>
+                                <button type="button" id="btn-cancel-test-agent" class="btn-action hidden"
+                                    style="width: 140px; color: #ef4444; border-color: rgba(239, 68, 68, 0.4);">실행 취소</button>
+                                <button type="button" id="btn-cancel-agent" class="btn-action"
+                                    style="width: 100px;">취소</button>
+                                <button type="submit" id="btn-save-agent" class="btn-primary"
+                                    style="width: 100px;">저장</button>
+                            </div>
+                            <!-- Test Output Modal inside the editor -->
+                            <div id="agent-test-output-container" class="hidden"
+                                style="margin-top: 20px; background: #000; color: #0f0; font-family: monospace; padding: 12px; border-radius: 6px; font-size: 0.85rem; height: 800px; resize: vertical; overflow: auto; display: flex; flex-direction: column;">
+                                <div style="margin-bottom: 8px; color: #fff; font-weight: bold; flex-shrink: 0;">[Sandbox Execution
+                                    Output] <button type="button"
+                                        onclick="document.getElementById('agent-test-output-container').classList.add('hidden')"
+                                        style="float:right; background:none; border:none; color:#fff; cursor:pointer;">닫기</button>
+                                </div>
+                                <div id="agent-test-output-logs" style="white-space: pre-wrap; flex-grow: 1; overflow-y: auto;"></div>
+                                <div id="agent-test-output-files" style="margin-top: 10px; flex-shrink: 0;"></div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div id="agent-editor-placeholder"
+                        style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--text-secondary); opacity:0.6;">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+                            style="margin-bottom:16px;">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 16v-4"></path>
+                            <path d="M12 8h.01"></path>
+                        </svg>
+                        <p style="font-size:1.1rem; font-weight:500;">왼쪽 목록에서 에이전트를 선택하거나 새 에이전트를 생성하세요.</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Manage Area -->
+        <main id="manage-area" class="main-content">
+            <!-- Header row -->
+            <div class="manage-header">
+                <div class="header-info">
+                    <h1>문서 관리</h1>
+                    <span class="status-badge">보유 문서(PDF, HWP, MS Office, TXT, Image)와 웹사이트 크롤링 페이지 등록 및 관리</span>
+                </div>
+                <div class="upload-section" style="gap: 12px; align-items: center; display: flex; flex-wrap: wrap;">
+                    <!-- upload-category hidden but kept for JS compatibility -->
+                    <select id="upload-category" class="category-select" title="카테고리 선택" style="display:none;">
+                        <option value="General">일반</option>
+                    </select>
+                    <input type="file" id="pdf-upload"
+                        accept=".pdf,.txt,.md,.csv,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.webp,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.hwp,.hwpx"
+                        multiple style="display: none;">
+                </div>
+            </div>
+
+            <!-- Tab bar -->
+            <div class="admin-tabs"
+                style="display: flex; gap: 20px; padding: 0 20px; border-bottom: 1px solid var(--border-color); background: var(--bg-primary); align-items: center;">
+                <button id="tab-manage-my" class="tab-btn active">내 문서</button>
+                <button id="tab-manage-public" class="tab-btn">공용 문서</button>
+                <button id="tab-manage-shared-groups" class="tab-btn">공유그룹관리</button>
+                <button id="tab-manage-website" class="tab-btn">웹사이트 등록</button>
+                <div style="margin-left: auto; display: flex; gap: 8px;">
+                    <button id="btn-refresh-docs" class="btn-action" title="문서 목록 새로고침"
+                        style="padding: 6px; display: flex; align-items: center; gap: 4px; font-size: 0.8rem; background: transparent; border: 1px solid var(--border-color);">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path
+                                d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                        </svg>
+                        새로고침
+                    </button>
+                    <button id="btn-toggle-manage-header" class="btn-action" title="메뉴 접기/펼치기"
+                        style="padding: 6px; display: flex; align-items: center; justify-content: center; background: transparent; border: 1px solid var(--border-color);">
+                        <svg id="icon-toggle-header" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="18 15 12 9 6 15"></polyline>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Website Crawling Panel (2-column layout) -->
+            <div class="manage-body hidden" id="manage-website-body" style="padding: 0; flex-direction: row; overflow: hidden; border-top: 1px solid var(--border-color);">
+                
+                <!-- LEFT: Websites List -->
+                <div class="folder-tree-panel" style="width: 320px; border-right: 1px solid var(--border-color);">
+                    <div class="folder-tree-toolbar" style="display:flex; justify-content:space-between; align-items:center; padding-bottom: 8px;">
+                        <span class="folder-tree-title">크롤링 웹사이트 목록</span>
+                        <div style="display: flex; gap: 4px; align-items: center;">
+                            <button id="btn-create-website-new" class="btn-primary" style="padding: 4px 8px; font-size: 0.8rem; width: 80px; text-align: center;">+ 새 등록</button>
+                            <button class="folder-toolbar-btn btn-collapse-tree" title="목록 접기/펼치기" style="padding: 4px; margin-left: 2px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="15 18 9 12 15 6"></polyline>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="folder-tree-list" id="websites-list-container" style="padding: 10px;">
+                        <!-- Website items rendered here -->
+                    </div>
+                </div>
+
+                <!-- RIGHT: Website Detail & Form Editor -->
+                <div class="manage-right-panel" style="padding: 30px; overflow-y: hidden; display: flex; flex-direction: column;">
+                    <!-- Detail View Title Wrapper -->
+                    <div style="margin-bottom: 20px;">
+                        <h2 id="website-editor-title" style="margin: 0; color: var(--text-primary); font-size: 1.2rem;">새 웹사이트 크롤링 및 등록</h2>
+                    </div>
+
+                    <div id="website-editor-container" style="width: 100%; display: flex; flex-direction: column; flex-grow: 1; overflow: hidden;">
+                        
+                        <!-- [VIEW] Registration Form -->
+                        <div id="website-registration-view" class="admin-card" style="padding: 30px; overflow-y: auto;">
+                            <!-- ... existing form ... -->
+                            <p style="color: var(--text-secondary); margin-bottom: 24px; font-size: 0.95rem; line-height: 1.5;">
+                                단일 페이지 구조(SPA)이거나 동적으로 컨텐츠가 로드되는 최신 웹사이트를 헤드리스 브라우저 엔진(Playwright)으로 방문하여 저장합니다.<br><br>
+                                <strong>주의:</strong> 분석하려는 링크 구조에 따라 짧게는 수십 초에서 최대 수 분 이상이 소요될 수 있습니다. 진행상황은 좌측 목록에서 확인 가능합니다.
+                            </p>
+                            <form id="form-crawl-website" style="display: flex; flex-direction: column; gap: 20px;">
+                                <fieldset style="border:none; padding:0; margin:0;" id="crawl-fieldset">
+                                    <div class="input-group" style="margin-bottom: 15px;">
+                                        <label style="font-weight: 500;">대상 웹사이트 URL <span style="color:var(--danger)">*</span></label>
+                                        <input type="url" id="crawl-url" class="input-text" placeholder="https://example.com" required style="padding: 12px;">
+                                    </div>
+                                    <div class="input-group" style="margin-bottom: 15px;">
+                                        <label style="font-weight: 500;">사이트 명칭 (문서 제목으로 사용) <span style="color:var(--danger)">*</span></label>
+                                        <input type="text" id="crawl-site-name" class="input-text" placeholder="예: 기업 공식 매뉴얼 문서" required style="padding: 12px;">
+                                    </div>
+                                    <div class="input-group" style="margin-bottom: 20px;">
+                                        <label style="font-weight: 500;">크롤링 방식 선택</label>
+                                        <select id="crawl-mode" class="category-select" style="width: 100%; box-sizing: border-box; padding: 12px;">
+                                            <option value="spa">최신 웹사이트 탐색 (SPA 동적 클릭 방식)</option>
+                                            <option value="static">전통적인 방식 (JSP/HTML 정적 링크 기반)</option>
+                                        </select>
+                                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 6px; margin-bottom: 0;">* SPA 방식은 메뉴 등을 직접 클릭하며 탐색합니다. 불필요한 공통 메뉴 스크랩이 많다면 전통적인 방식을 권장합니다.</p>
+                                    </div>
+                                    <div class="input-group" style="margin-bottom: 20px;">
+                                        <label style="font-weight: 500;">탐색 순서 전략 설정</label>
+                                        <select id="crawl-strategy" class="category-select" style="width: 100%; box-sizing: border-box; padding: 12px;">
+                                            <option value="bfs">너비 우선 탐색 (BFS) - 얕은 페이지부터 넒게 탐색 (표준 검색 수준)</option>
+                                            <option value="dfs">깊이 우선 탐색 (DFS) - 지정한 카테고리의 끝까지 깊게 파고들기</option>
+                                        </select>
+                                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 6px; margin-bottom: 0;">* 깊이 우선 탐색(DFS)은 메모리 사용량이 적고, 연결된 주제를 심도로 추적하는 데 유리합니다.</p>
+                                    </div>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                                        <div class="input-group">
+                                            <label style="font-weight: 500;">최대 하위 깊이 제한 (Max Depth)</label>
+                                            <input type="number" id="crawl-max-depth" class="input-text" value="3" min="1" max="99" style="width: 100%; box-sizing: border-box; padding: 10px;">
+                                        </div>
+                                        <div class="input-group">
+                                            <label style="font-weight: 500;">최대 수집 페이지 수</label>
+                                            <input type="number" id="crawl-max-pages" class="input-text" value="50" min="1" max="1000" style="width: 100%; box-sizing: border-box; padding: 10px;">
+                                        </div>
+                                    </div>
+                                    <div class="input-group" style="margin-bottom: 20px;">
+                                        <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer;">
+                                            <input type="checkbox" id="crawl-restrict-path" checked style="width: 18px; height: 18px;">
+                                            입력한 URL의 하위 경로(게시판) 내에서만 탐색 (외부 카테고리 무시)
+                                        </label>
+                                    </div>
+
+                                    <div id="ai-extract-wrapper" style="margin-bottom: 20px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: rgba(var(--accent-rgb), 0.03); display: none;">
+                                        <div style="padding: 12px 16px; border-bottom: 1px solid var(--border-color);">
+                                            <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; color: var(--accent);">
+                                                <input type="checkbox" id="crawl-use-ai" style="width: 18px; height: 18px;">
+                                                ✨ AI 의미론적 링크 추출 (Gemini)
+                                            </label>
+                                            <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 6px; margin-bottom: 0; padding-left: 26px;">
+                                                AI 모델(gemini-flash-lite-latest)이 프롬프트 조건에 일치하는 관련 링크만 선별하여 크롤링을 수행합니다.
+                                            </p>
+                                        </div>
+                                        <div id="ai-extract-prompt-container" style="padding: 16px; background: var(--bg-primary); display: none;">
+                                            <div class="input-group">
+                                                <label style="font-weight: 500; font-size: 0.9rem;">추출 기준 프롬프트 입력 <span style="color:var(--danger)">*</span></label>
+                                                <textarea id="crawl-ai-prompt" class="input-text" placeholder="예: 재무제표나 기업 실적 발표와 관련된 뉴스/공지사항 링크만 추출해줘" style="padding: 10px; height: 80px; resize: vertical; margin-top: 8px;"></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div style="margin-bottom: 20px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                                        <div id="adv-crawl-options-toggle" style="padding: 12px 16px; background: rgba(99, 102, 241, 0.05); cursor: pointer; display: flex; align-items: center; justify-content: space-between; font-weight: 600; font-size: 0.95rem; color: var(--text-primary);">
+                                            <span>⚙️ 고급 설정 (자동 로그인 및 검색)</span>
+                                            <span style="font-size: 0.8rem;">▼</span>
+                                        </div>
+                                        <div id="adv-crawl-options-body" style="padding: 16px; background: var(--bg-primary); display: none;">
+                                            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;">
+                                                접속 전 자동으로 아이디와 비밀번호를 입력해 로그인을 시도하거나, 방문 즉시 특정 키워드 검색을 실행한 후 수집을 시작합니다.
+                                            </p>
+                                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                                                <div class="input-group">
+                                                    <label style="font-weight: 500; font-size: 0.9rem;">로그인 아이디 (ID / Email)</label>
+                                                    <input type="text" id="crawl-login-id" class="input-text" placeholder="아이디 입력" autocomplete="off" style="padding: 10px;">
+                                                </div>
+                                                <div class="input-group">
+                                                    <label style="font-weight: 500; font-size: 0.9rem;">패스워드 (Password)</label>
+                                                    <input type="password" id="crawl-login-pw" class="input-text" placeholder="비밀번호 입력" autocomplete="new-password" style="padding: 10px;">
+                                                </div>
+                                            </div>
+                                            <div class="input-group">
+                                                <label style="font-weight: 500; font-size: 0.9rem;">접속 후 자동 검색어 입력</label>
+                                                <input type="text" id="crawl-search-keyword" class="input-text" placeholder="예: 2024년 결산 보고서" autocomplete="off" style="padding: 10px;">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div style="display:flex;justify-content:flex-end;padding-top:10px;">
+<button type="submit" class="btn-primary" id="btn-start-crawl" style=" width: auto; padding: 12px 30px; display: flex; align-items: center; gap: 8px; font-size: 1rem;">
+                                        🌐 크롤링 시작 및 큐 등재
+                                    </button>
+</div>
+                                </fieldset>
+                            </form>
+                            <div id="crawl-status-container" class="hidden" style="margin-top: 24px; padding: 20px; background: rgba(99, 102, 241, 0.05); border-left: 4px solid var(--accent-primary); border-radius: 6px;">
+                                <div style="display:flex; align-items:center; gap:12px; font-weight:600; font-size: 1.1rem; color: var(--accent-primary);">
+                                    <span class="loader" style="width:20px;height:20px;border-width:3px;"></span> 큐에 등록 중...
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- [VIEW] Details Viewer -->
+                        <div id="website-details-view" class="hidden" style="display: flex; flex-direction: column; flex-grow: 1; overflow: hidden; gap: 20px;">
+                            <!-- Top Card: Basic Info & Manage actions -->
+                            <div class="admin-card" style="padding: 24px; margin: 0; flex: none;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                                    <div style="display:flex; align-items:center; gap:12px;">
+                                        <h3 id="website-detail-title" style="margin:0; font-size: 1.3rem;">[문서명]</h3>
+                                        <span id="website-detail-status" class="status-badge" style="background:var(--success-bg); color:var(--success);">상태</span>
+                                    </div>
+                                    <div style="display:flex; gap:8px;">
+                                        <button class="btn-action" id="detail-btn-viewer" style="padding:6px 12px; border:1px solid var(--border-color);">👀 추출된 전체 본문 보기</button>
+                                        <button class="btn-action" id="detail-btn-recrawl" style="padding:6px 12px; border:1px solid var(--border-color);">🔄 재크롤링</button>
+                                        <button class="btn-action" id="detail-btn-stop" style="color:var(--danger); display:none; padding:6px 12px; border:1px solid var(--border-color);">⏹ 중단</button>
+                                        <button class="btn-action" id="detail-btn-delete" style="color:var(--danger); padding:6px 12px; border:1px solid var(--danger);">🗑 삭제</button>
+                                    </div>
+                                </div>
+                                
+                                <div style="display:grid; grid-template-columns: max-content 1fr; gap:12px 16px; font-size: 0.95rem; color:var(--text-secondary);">
+                                    <strong>생성일:</strong>
+                                    <span id="website-detail-date">-</span>
+
+                                    <strong>최종 업데이트:</strong>
+                                    <span id="website-detail-updated">-</span>
+                                    
+                                    <strong>원본 경로:</strong>
+                                    <a id="website-detail-url" href="#" target="_blank" style="color:var(--accent-primary); text-decoration:none;">-</a>
+                                    
+                                    <strong>진행 상태:</strong>
+                                    <span id="website-detail-progress" style="color: var(--text-primary); word-break: break-all;">-</span>
+
+                                    <strong style="display:flex; align-items:center;">자동 크롤링:</strong>
+                                    <select id="website-detail-schedule" class="category-select" style="padding: 4px 8px; font-size: 0.9rem; width: fit-content; margin-left: 0;">
+                                        <option value="disable">사용 안함</option>
+                                        <option value="5mins">매 5분 마다 (테스트)</option>
+                                        <option value="hourly">매 1시간 마다</option>
+                                        <option value="6hours">매 6시간 마다</option>
+                                        <option value="12hours">매 12시간 마다</option>
+                                        <option value="daily">매일 주기 수집</option>
+                                        <option value="weekly">매주 주기 수집</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <!-- Bottom Card: Inline Crawling Logs -->
+                            <div class="admin-card" style="padding: 0; margin: 0; display: flex; flex-direction: column; flex-grow: 1; overflow: hidden;">
+                                <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-color); background: var(--bg-hover); flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;">
+                                    <h4 style="margin: 0; font-size: 1.1rem; color: var(--text-primary);">🗂️ 크롤링 수집 이력 (로그 목록)</h4>
+                                    <button class="btn-action" onclick="window.refreshInlineLogs()" style="padding: 4px 8px; font-size: 0.85rem;">🔄 목록 갱신</button>
+                                </div>
+                                <div class="table-container" style="flex-grow: 1; overflow-y: auto; background: var(--bg-primary);">
+                                    <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                                        <thead style="position: sticky; top: 0; background: var(--bg-hover); border-bottom: 2px solid var(--border-color); z-index: 1;">
+                                            <tr>
+                                                <th style="padding: 12px 16px; font-weight: 600; color: var(--text-secondary);">수집 URL</th>
+                                                <th style="padding: 12px 16px; font-weight: 600; color: var(--text-secondary);">페이지 제목</th>
+                                                <th style="padding: 12px 16px; font-weight: 600; color: var(--text-secondary); width: 120px; white-space: nowrap;">데이터 크기</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="inline-crawl-logs" style="color: var(--text-primary);">
+                                            <tr><td colspan="3" style="text-align:center; padding: 20px; color: var(--text-secondary);">왼쪽 목록에서 웹사이트를 선택하세요.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2-column body -->
+            <div class="manage-body" id="manage-docs-body">
+
+                <!-- LEFT: Folder Tree Panel -->
+                <div class="folder-tree-panel" id="folder-tree-panel">
+                    <div class="folder-tree-toolbar">
+                        <span class="folder-tree-title">카테고리</span>
+                        <div style="display: flex; gap: 4px; align-items: center;">
+                            <button id="btn-create-folder" class="btn-primary" style="padding: 4px 10px; font-size: 0.8rem; height: 26px; width: auto; color: #fff;" title="새 폴더">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                                    <line x1="12" y1="11" x2="12" y2="17" />
+                                    <line x1="9" y1="14" x2="15" y2="14" />
+                                </svg>
+                                새 폴더
+                            </button>
+                            <button class="folder-toolbar-btn btn-collapse-tree" title="목록 접기/펼치기" style="padding: 4px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="15 18 9 12 15 6"></polyline>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Breadcrumb path -->
+                    <div class="folder-breadcrumb" id="folder-breadcrumb">
+                        <span class="breadcrumb-item" data-id="null">🏠 홈</span>
+                    </div>
+                    <!-- Folder tree list -->
+                    <div class="folder-tree-list" id="folder-tree-list">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+
+                <!-- RIGHT: Upload dropzone + doc table -->
+                <div class="manage-right-panel">
+                    <!-- Current folder info + filter row -->
+                    <div class="manage-filter-bar">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                            </svg>
+                            <span id="current-folder-name" class="current-folder-label">전체 문서</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <!-- legacy filter kept hidden -->
+                            <select id="manage-category-filter" class="category-select" style="display:none;">
+                                <option value="All">모든 카테고리</option>
+                            </select>
+                            <span style="font-size:0.85rem;color:var(--text-secondary);white-space:nowrap;">페이지 당:</span>
+                            <select id="items-per-page" class="category-select" title="페이지 당 항목 수 설정">
+                                <option value="10">10개</option>
+                                <option value="25">25개</option>
+                                <option value="50">50개</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="dropzone" id="upload-dropzone" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:30px 20px;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px; z-index:10; background:var(--bg-primary); padding:6px 16px; border-radius:20px; border:1px solid var(--border-color); box-shadow:0 2px 6px rgba(0,0,0,0.2);">
+                            <span style="font-size:0.85rem; font-weight:600; color:var(--text-primary); white-space:nowrap; flex-shrink:0;">공개 여부 :</span>
+                            <select id="upload-visibility" class="category-select" title="업로드 문서 공개 권한" style="background:transparent; border:none; outline:none; font-size:0.85rem; min-width:auto; cursor:pointer; font-weight:500; padding:0 8px;">
+                                <option value="private">나만 보기 (Private)</option>
+                                <option value="organization">조직 공용 (Organization)</option>
+                                <option value="public">전체 공개 (Public)</option>
+                            </select>
+                        </div>
+                        
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="1.5" style="opacity:0.5;margin-bottom:8px;">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                        </svg>
+                        <p>파일을 여기에 드래그앤드롭 하거나 <button id="btn-dropzone-click" class="dropzone-link">클릭하여 선택</button></p>
+                        <p style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;">여러 파일을 동시에 업로드할 수 있습니다
+                        </p>
+                    </div>
+
+                    <!-- Document list -->
+                    <div class="docs-list-container full-width">
+                        <div id="bulk-action-bar" style="display: none; align-items: center; justify-content: flex-start; gap: 12px; margin-bottom: 12px; padding: 10px 16px; border-radius: 8px; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3);">
+                            <span style="font-size: 0.85rem; font-weight: 600; color: var(--accent-primary); white-space: nowrap;"><span id="selected-docs-count">0</span>개 항목 선택됨</span>
+                            <button id="btn-bulk-reindex" class="btn-primary" style="width: auto; padding: 6px 12px; font-size: 0.8rem; background-color: #38bdf8; border-color: #38bdf8;">일괄 재인덱싱</button>
+                            <button id="btn-bulk-stop" class="btn-primary" style="width: auto; padding: 6px 12px; font-size: 0.8rem; background-color: #f59e0b; border-color: #f59e0b;">일괄 정지</button>
+                            <button id="btn-bulk-delete" class="btn-primary" style="width: auto; padding: 6px 12px; font-size: 0.8rem; background-color: #ef4444; border-color: #ef4444;">선택 삭제</button>
+                        </div>
+                        <div class="docs-table-wrapper">
+                            <div class="docs-table-header">
+                                <div class="th-chk" style="padding-left: 10px; width: 40px; text-align: center;"><input type="checkbox" id="docs-select-all" title="현재 페이지 전체 선택" style="cursor: pointer;"></div>
+                                <div class="th-no" style="padding-left: 10px;">번호</div>
+                                <div class="th-name">문서 이름</div>
+                                <div class="th-uploader" style="padding-left: 10px;">업로더</div>
+                                <div class="th-category" style="padding-left: 10px;">카테고리</div>
+                                <div class="th-visibility" style="text-align: center;">공개 여부</div>
+                                <div class="th-active" style="text-align: center;">사용 여부</div>
+                                <div class="th-status">상태</div>
+                                <div class="th-date">업로드 날짜</div>
+                                <div class="th-pages">페이지 수</div>
+                                <div class="th-actions">동작</div>
+                            </div>
+                            <ul id="docs-list" class="docs-table">
+                                <li class="empty-state">아직 업로드된 문서가 없습니다.</li>
+                            </ul>
+                            <div id="pagination-controls"
+                                style="display: flex; justify-content: center; align-items: center; padding: 16px; gap: 16px; border-top: 1px solid var(--border-color); background: rgba(0,0,0,0.2);">
+                                <button id="btn-prev-page" class="btn-action" disabled>이전</button>
+                                <span id="page-info" style="font-size: 0.9rem; color: var(--text-secondary);">1 /
+                                    1</span>
+                                <button id="btn-next-page" class="btn-action" disabled>다음</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Shared Group Management Panel -->
+            <div class="manage-body hidden" id="manage-groups-body">
+                <!-- LEFT: Group List Panel -->
+                <div class="folder-tree-panel" style="width: 280px; flex-shrink: 0;">
+                    <div class="folder-tree-toolbar">
+                        <span class="folder-tree-title">나의 공유 그룹</span>
+                        <div style="display: flex; gap: 4px; align-items: center;">
+                            <button id="btn-create-shared-group" class="btn-primary" style="padding: 4px 10px; font-size: 0.8rem; height: 26px; width: auto; color: #fff;" title="새 그룹">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                                </svg>
+                                새 그룹
+                            </button>
+                            <button class="folder-toolbar-btn btn-collapse-tree" title="목록 접기/펼치기" style="padding: 4px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="15 18 9 12 15 6"></polyline>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="folder-tree-list" id="shared-groups-list">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+
+                <!-- RIGHT: Group Edit Panel -->
+                <div class="manage-right-panel" id="shared-group-editor" style="padding: 24px; display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                        <h2 id="shared-group-editor-title" style="margin: 0; font-size: 1.2rem;">새 공유 그룹</h2>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button id="btn-delete-shared-group" class="btn-action hidden" style="color: var(--danger); border-color: rgba(239, 68, 68, 0.4); width: 100px; height: 38px;">그룹 삭제</button>
+                            <button id="btn-save-shared-group" class="btn-primary" style="width: 100px; height: 38px;">저장</button>
+                        </div>
+                    </div>
+
+                    <div class="input-group" style="margin-bottom: 24px;">
+                        <label>그룹 이름</label>
+                        <input type="text" id="shared-group-name" class="input-text" placeholder="예: 개발 1팀 프로젝트 그룹">
+                    </div>
+
+                    <div class="input-group" style="margin-bottom: 24px; position: relative;">
+                        <label>그룹 멤버 추가 (사용자 또는 조직 검색)</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="shared-group-search-input" class="input-text" style="flex: 1;" placeholder="이름, 아이디, 또는 조직명으로 검색..." autocomplete="off">
+                            <button id="btn-search-shared-group" class="btn-primary" style="white-space: nowrap; width: 60px; padding: 0;">검색</button>
+                        </div>
+                        <!-- Search Results Dropdown -->
+                        <div id="shared-group-search-results" class="hidden" style="position: absolute; top: 100%; left: 0; right: 0; z-index: 100; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 6px; margin-top: 4px; max-height: 200px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+                            <!-- Rendered by JS -->
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label>현재 추가된 멤버</label>
+                        <div id="shared-group-members-container" style="display: flex; flex-wrap: wrap; gap: 8px; min-height: 60px; padding: 12px; border: 1px dashed var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.1);">
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="shared-group-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; color: var(--text-secondary); opacity: 0.6;">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 16px;">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                    <p style="font-size: 1.1rem; font-weight: 500;">왼쪽 목록에서 그룹을 선택하거나 새 그룹을 생성하세요.</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- Folder context menu -->
+        <div class="folder-context-menu hidden" id="folder-context-menu">
+            <button class="ctx-menu-item" id="ctx-rename-folder">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+                이름 및 공유설정 변경
+            </button>
+            <button class="ctx-menu-item ctx-danger" id="ctx-delete-folder">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14H6L5 6" />
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                    <path d="M9 6V4h6v2" />
+                </svg>
+                삭제
+            </button>
+        </div>
+
+        <!-- Modal: Create / Rename folder -->
+        <div class="modal-overlay" id="modal-folder-name">
+            <div class="modal-box" style="width: 320px;">
+                <div class="modal-title" id="modal-folder-title" style="margin-bottom: 12px;">새 폴더</div>
+                <div style="margin-bottom: 16px;">
+                    <label
+                        style="display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 6px;">폴더
+                        이름</label>
+                    <input type="text" id="input-folder-name" class="input-text" placeholder="폴더 이름 입력..."
+                        style="width:100%; box-sizing: border-box;">
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label
+                        style="display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 6px;">공개
+                        범위</label>
+                    <select id="select-folder-visibility" class="category-select"
+                        style="width: 100%; box-sizing: border-box;">
+                        <option value="private">비공개 (나만 보기)</option>
+                        <option value="organization">조직 공용</option>
+                        <option value="public">전체 공개</option>
+                    </select>
+                </div>
+
+                <div class="modal-actions">
+                    <button id="btn-cancel-folder" class="btn-action">취소</button>
+                    <button id="btn-confirm-folder" class="btn-primary">확인</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Settings (환경설정) -->
+        <div class="modal-overlay" id="modal-settings">
+            <div class="modal-box" style="width: 400px;">
+                <div class="modal-title" style="margin-bottom: 20px;">환경설정</div>
+                
+                <!-- Settings Tabs -->
+                <div class="admin-tabs" style="display: flex; gap: 20px; border-bottom: 1px solid var(--border-color); margin-bottom: 20px;">
+                    <button id="tab-settings-profile" class="tab-btn active">프로필 이미지</button>
+                    <button id="tab-settings-password" class="tab-btn">비밀번호 변경</button>
+                </div>
+                
+                <!-- Profile Image Tab -->
+                <div id="settings-panel-profile">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <img id="settings-profile-preview" src="" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; background: var(--bg-primary); border: 2px solid var(--border-color); display: none; margin: 0 auto;">
+                        <div id="settings-profile-initials" style="width: 100px; height: 100px; border-radius: 50%; background: var(--accent); color: white; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 600; margin: 0 auto;">?</div>
+                    </div>
+                    <form id="form-settings-profile">
+                        <div class="input-group">
+                            <label>이미지 파일 (PNG, JPG, WebP)</label>
+                            <input type="file" id="settings-profile-file" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif" class="input-text" style="padding: 8px;">
+                        </div>
+                        <div class="modal-actions" style="margin-top: 20px;">
+                            <button type="button" class="btn-action btn-close-settings">닫기</button>
+                            <button type="submit" class="btn-primary" id="btn-save-profile">이미지 업로드</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <!-- Password Tab -->
+                <div id="settings-panel-password" class="hidden">
+                    <form id="form-settings-password">
+                        <input type="text" autocomplete="username" style="display:none;" value="[CurrentUser]">
+                        <div class="input-group">
+                            <label>현재 비밀번호</label>
+                            <input type="password" id="settings-current-pw" class="input-text" required autocomplete="current-password">
+                        </div>
+                        <div class="input-group">
+                            <label>새 비밀번호</label>
+                            <input type="password" id="settings-new-pw" class="input-text" required autocomplete="new-password">
+                        </div>
+                        <div class="input-group">
+                            <label>새 비밀번호 확인</label>
+                            <input type="password" id="settings-confirm-pw" class="input-text" required autocomplete="new-password">
+                        </div>
+                        <div class="modal-actions" style="margin-top: 20px;">
+                            <button type="button" class="btn-action btn-close-settings">닫기</button>
+                            <button type="submit" class="btn-primary" id="btn-save-password">비밀번호 변경</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Area (Hidden by default) -->
+        <main id="chat-wrapper" class="main-content hidden chat-layout">
+            <div class="chat-area">
+                <div class="chat-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <div class="mobile-header-row">
+                        <div class="header-info">
+                            <h1 style="margin: 0; line-height: 1;">질의응답</h1>
+                            <span class="status-badge">Tree Search 기반 추론형 대화</span>
+                        </div>
+                        <button id="btn-chat-filter-toggle" class="btn-icon mobile-only" style="display:none; padding:8px;">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="filter-toggle-icon" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
+                    </div>
+                    <div id="chat-filter-area" class="chat-filter"
+                        style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px; justify-content: flex-end;">
+                        <div style="display: flex; align-items: center; position: relative;">
+                            <span style="font-size: 0.85rem; color: var(--text-secondary); margin-right: 8px;">카테고리:</span>
+                            <button type="button" id="chat-category-btn" class="category-select" style="display: flex; align-items: center; justify-content: space-between; min-width: 140px; text-align: left; background: var(--bg-primary); border: 1px solid var(--border-color); padding: 5px 8px; border-radius: 4px; cursor: pointer; color: var(--text-primary);">
+                                <span id="chat-category-label" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px;">모든 카테고리</span>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0; margin-left:4px;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </button>
+                            <div id="chat-category-dropdown" class="hidden" style="position: absolute; top: 100%; left: 54px; margin-top: 4px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px; min-width: 160px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; max-height: 300px; overflow-y: auto; display:flex; flex-direction:column; gap:2px;">
+                                <!-- Checkboxes will be rendered here -->
+                            </div>
+                        </div>
+                        <div
+                            style="display: flex; align-items: center; padding-left: 8px; border-left: 1px solid var(--border-color);">
+                            <span
+                                style="font-size: 0.85rem; color: var(--text-secondary); margin-right: 8px;">에이전트:</span>
+                            <select id="chat-agent-filter" class="category-select"
+                                style="min-width: 160px; font-weight: 500;">
+                                <option value="">🎯 기본 RAG 대화</option>
+                                <!-- Agents will be rendered here -->
+                            </select>
+                        </div>
+                        <div id="chat-sandbox-toggle-container" class="hidden"
+                            style="display: none !important; align-items: center; padding-left: 8px; border-left: 1px solid var(--border-color); cursor: pointer;">
+                            <label style="display: none !important; align-items: center; cursor: pointer; gap: 6px; font-size: 0.85rem; color: var(--accent); font-weight: 500;">
+                                <input type="checkbox" id="chat-run-sandbox" checked style="cursor: pointer; accent-color: var(--accent);">
+                                💻 코드 활성
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Selected Docs Panel (Hidden by default) -->
+                <div id="selected-docs-panel" class="hidden" style="background: rgba(99, 102, 241, 0.05); border-bottom: 1px solid var(--border-color); padding: 12px 30px; display: none; flex-direction: column; gap: 8px; backdrop-filter: blur(4px); z-index: 10;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="font-size: 0.85rem; font-weight: 600; color: var(--accent-primary); display: flex; align-items: center; gap: 6px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                            선택된 검색 문서 (<span id="selected-docs-count">0</span>)
+                        </div>
+                        <button id="btn-toggle-selected-docs" style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; padding: 4px; border-radius: 4px;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform 0.2s;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
+                    </div>
+                    <div id="selected-docs-list" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; transition: max-height 0.3s ease; overflow: hidden; max-height: 150px; overflow-y: auto;">
+                        <!-- JS injected chips -->
+                    </div>
+                </div>
+
+                <div id="chat-messages" class="chat-messages">
+                    <div class="chat-empty-state">
+                        <h2 class="kms-anim-text">
+                            <span class="kms-char" style="--i:1">지</span>
+                            <span class="kms-char" style="--i:2">능</span>
+                            <span class="kms-char" style="--i:3">형</span>
+                            <span class="kms-char" style="--i:4">&nbsp;</span>
+                            <span class="kms-char" style="--i:5">지</span>
+                            <span class="kms-char" style="--i:6">식</span>
+                            <span class="kms-char" style="--i:7">관</span>
+                            <span class="kms-char" style="--i:8">리</span>
+                            <span class="kms-char" style="--i:9">시</span>
+                            <span class="kms-char" style="--i:10">스</span>
+                            <span class="kms-char" style="--i:11">템</span>
+                        </h2>
+                        <div class="empty-text">무엇이든 편하게 질문해 주세요</div>
+                    </div>
+                </div>
+
+                <div class="chat-input-container">
+                    <div id="chat-attachment-preview" class="hidden"
+                        style="margin-bottom: 8px; font-size: 0.85rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                            <polyline points="13 2 13 9 20 9"></polyline>
+                        </svg>
+                        <span id="chat-attachment-name"></span>
+                        <button id="btn-remove-attachment"
+                            style="background:none; border:none; cursor:pointer; color:#ef4444; padding:0;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="input-wrapper">
+                        <input type="file" id="chat-file-upload" style="display: none;">
+                        <button id="btn-attach-file" class="btn-icon hidden" aria-label="Attach File" title="파일 첨부 (에이전트 전용)">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path
+                                    d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48">
+                                </path>
+                            </svg>
+                        </button>
+                        <div id="chat-search-mode-container" style="display:flex; align-items:center; padding: 0 8px; border-right: 1px solid var(--border-color); margin-right: 8px;">
+                            <label class="search-mode-toggle" title="체크 시 질문에 대한 AI 생성 답변 대신 일치하는 원문 문서를 검색합니다.">
+                                <input type="checkbox" id="chat-search-mode">
+                                <div class="toggle-content">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="11" cy="11" r="8"></circle>
+                                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                    </svg>
+                                    <span>문서 검색</span>
+                                </div>
+                            </label>
+                        </div>
+                        <textarea id="chat-input" placeholder="업로드한 문서에 대하여 자유롭게 질문해 보세요..." rows="1"></textarea>
+                        <button id="send-btn" class="btn-icon" aria-label="Send">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+    </div>
+    </main>
+
+    <!-- Global PDF Viewer Pane -->
+    <div id="pdf-overlay" class="pdf-overlay hidden"></div>
+    <div id="pdf-pane" class="pdf-pane hidden">
+        <div class="pdf-header">
+            <h3 id="pdf-title">문서 뷰어</h3>
+            <button id="close-pdf" class="btn-secondary" style="font-size: 0.9rem; padding: 6px 16px; margin-right: 4px; white-space: nowrap; min-width: 70px; background-color: #ffffff; color: #0f172a; font-weight: bold; border: 1px solid #cbd5e1;" aria-label="닫기">
+                닫기
+            </button>
+        </div>
+        <div class="pdf-frame-container">
+            <iframe id="pdf-viewer" src="" width="100%" height="100%"></iframe>
+        </div>
+    </div>
+    </div>
+
+    </div>
+
+    <!-- Global Confirm Modal -->
+    <div id="global-confirm-modal" class="custom-modal">
+        <div class="custom-modal-content">
+            <h3 id="confirm-modal-title">확인</h3>
+            <p id="confirm-modal-message">정말 진행하시겠습니까?</p>
+            <div class="modal-actions">
+                <button id="btn-global-confirm-cancel" class="btn-action">취소</button>
+                <button id="btn-global-confirm-ok" class="btn-action delete">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- App Exit Modal for Mobile -->
+    <div id="modal-app-exit" class="custom-modal">
+        <div class="custom-modal-content">
+            <h3>프로그램 종료</h3>
+            <p>프로그램을 종료하시겠습니까?</p>
+            <div class="modal-actions">
+                <button id="btn-app-exit-cancel" class="btn-action">취소</button>
+                <button id="btn-app-exit-confirm" class="btn-primary" style="background:#e11d48; border-color:#e11d48;">종료</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename Organization Modal -->
+    <div id="modal-rename-org" class="custom-modal">
+        <div class="custom-modal-content">
+            <h3>조직 이름 변경</h3>
+            <p>새로운 조직 이름을 입력해주세요.</p>
+            <input type="text" id="input-rename-org" class="input-text" style="width: 100%; box-sizing: border-box;"
+                placeholder="조직 이름">
+            <div class="modal-actions">
+                <button id="btn-cancel-rename-org" class="btn-action">취소</button>
+                <button id="btn-confirm-rename-org" class="btn-primary">변경하기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Category Modal -->
+    <div id="modal-add-category" class="custom-modal">
+        <div class="custom-modal-content">
+            <h3>새 카테고리 추가</h3>
+            <p>생성할 카테고리 이름을 입력해주세요.</p>
+            <input type="text" id="input-new-category" class="input-text" style="width: 100%; box-sizing: border-box; margin-bottom: 20px;"
+                placeholder="예: 기술 문서, 규정집...">
+            
+
+                
+            <div class="modal-actions">
+                <button id="btn-cancel-add-category" class="btn-action">취소</button>
+                <button id="btn-confirm-add-category" class="btn-primary">추가하기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div id="toast-container"></div>
+
+    <!-- Crawl Log Viewer Modal -->
+    <div class="modal" id="modal-crawl-log">
+        <div class="modal-content" style="max-width: 800px; width: 90vw;">
+            <div class="modal-header">
+                <h3 id="modal-crawl-log-title">크롤링 상세 로그</h3>
+                <button class="btn-close" id="btn-close-crawl-log">×</button>
+            </div>
+            <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+                <p style="margin-bottom: 12px; color: var(--text-secondary); font-size: 0.9rem;">
+                    해당 사이트에서 방문하고 수집되어 인덱싱된 하위 페이지(URL) 목록입니다.
+                </p>
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
+                    <thead style="background: var(--bg-hover);">
+                        <tr>
+                            <th style="padding: 10px; border-bottom: 1px solid var(--border-color);">페이지 (URL)</th>
+                            <th style="padding: 10px; border-bottom: 1px solid var(--border-color);">제목 (Title)</th>
+                            <th style="padding: 10px; border-bottom: 1px solid var(--border-color);">추출 크기</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-crawl-logs">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Website Text Viewer Modal -->
+    <div class="modal-overlay" id="modal-website-viewer">
+        <div class="modal-box" style="max-width: 900px; width: 90vw;">
+            <div class="modal-header">
+                <div style="display:flex; flex-direction:column;">
+                    <h3 id="modal-website-viewer-title">웹사이트 본문 뷰어</h3>
+                    <a id="modal-website-original-link" target="_blank" href="#" style="font-size: 0.85rem; color: var(--accent-primary); text-decoration: none; margin-top: 4px;">🔗 원문 사이트에서 열기</a>
+                </div>
+                <button class="btn-close" id="btn-close-website-viewer">×</button>
+            </div>
+            <div class="modal-body" style="max-height: 70vh; overflow-y: auto; background: var(--bg-hover); padding: 20px;">
+                <div id="website-viewer-content" class="markdown-body" style="background: var(--bg-card); padding: 30px; border-radius: 8px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.05); color: var(--text-primary); line-height: 1.6; font-size: 0.95rem;">
+                    <!-- Markdown content goes here -->
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="/js/script.js?v=202604142353.6"></script>
+
+    <!-- Generic Confirm Modal -->
+    <div class="modal-overlay" id="modal-confirm">
+        <div class="modal-box" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3 id="modal-confirm-title">확인</h3>
+                <button class="btn-close" id="btn-close-confirm">×</button>
+            </div>
+            <div class="modal-body" style="padding: 24px;">
+                <p id="modal-confirm-message" style="margin: 0; font-size: 1rem; color: var(--text-primary);">정말 진행하시겠습니까?</p>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="btn-secondary" style="flex: 1;" id="btn-cancel-confirm">취소</button>
+                <button class="btn-primary" style="flex: 1; background: var(--danger);" id="btn-ok-confirm">확인</button>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

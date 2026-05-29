@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Test API</title>
+</head>
+
+<body>
+    <h2>Test Extract Text</h2>
+    <input type="file" id="fileInput">
+    <button id="btnExtract">Extract Text</button>
+    <pre id="extractResult"></pre>
+
+    <h2>Test DOCX Export</h2>
+    <textarea id="docxText">Test content output here</textarea>
+    <button id="btnDocx">Export DOCX</button>
+    <pre id="docxResult"></pre>
+
+    <script>
+        document.getElementById('btnExtract').onclick = async () => {
+            const file = document.getElementById('fileInput').files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const res = await fetch('/api/extract_text', { method: 'POST', body: formData });
+            document.getElementById('extractResult').innerText = `Status: ${res.status}\nOK? ${res.ok}`;
+        };
+
+        document.getElementById('btnDocx').onclick = async () => {
+            const text = document.getElementById('docxText').value;
+            const res = await fetch('/api/export_docx', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: text })
+            });
+            document.getElementById('docxResult').innerText = `Status: ${res.status}\nOK? ${res.ok}`;
+        };
+    </script>
+</body>
+
+</html>
